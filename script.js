@@ -1,6 +1,6 @@
 /**
  * H2S Dose Reader — Core Application Script
- * Single-Page Client-Side Image Processing & Dose Interpolation Engine
+ * Single-Page Client-Side Image Processing, QR Scanner, Auto-Detect & Curve Visualizer Engine
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -29,8 +29,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const resetPinsBtn = document.getElementById('resetPinsBtn');
   const computeDoseBtn = document.getElementById('computeDoseBtn');
+  const autoDetectBtn = document.getElementById('autoDetectBtn');
+  const autoDetectBanner = document.getElementById('autoDetectBanner');
   const stepInstruction = document.getElementById('stepInstruction');
   const stepBadge = document.getElementById('stepBadge');
+
+  // QR DOM Elements
+  const scanWorkerQrBtn = document.getElementById('scanWorkerQrBtn');
+  const qrFileInput = document.getElementById('qrFileInput');
+  const qrScanSuccessBanner = document.getElementById('qrScanSuccessBanner');
+  const qrScanSuccessText = document.getElementById('qrScanSuccessText');
+  const headerQrBadgeBtn = document.getElementById('headerQrBadgeBtn');
+  const openQrModalBtn = document.getElementById('openQrModalBtn');
+  const qrBadgeModal = document.getElementById('qrBadgeModal');
+  const closeQrModalBtn = document.getElementById('closeQrModalBtn');
+  const printBadgeBtn = document.getElementById('printBadgeBtn');
+  const qrcodeDisplay = document.getElementById('qrcodeDisplay');
+  const badgeWorkerIdText = document.getElementById('badgeWorkerIdText');
+  const badgeShiftDateText = document.getElementById('badgeShiftDateText');
+  const badgeTimestampText = document.getElementById('badgeTimestampText');
 
   // Readout cards
   const readoutWhite = document.getElementById('readoutWhite');
@@ -50,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const saveLogBtn = document.getElementById('saveLogBtn');
   const techDetailsBox = document.getElementById('techDetailsBox');
   const techDetailsToggle = document.getElementById('techDetailsToggle');
+  const resultCurveChartContainer = document.getElementById('resultCurveChartContainer');
 
   // Dashboard DOM Elements
   const logSearchInput = document.getElementById('logSearchInput');
@@ -91,7 +109,6 @@ document.addEventListener('DOMContentLoaded', () => {
   navTabs.forEach(tab => {
     tab.addEventListener('click', () => {
       const targetScreen = tab.dataset.screen;
-      // Prevent navigating to calibrate/result if no image is loaded
       if ((targetScreen === 'calibrate-screen' || targetScreen === 'result-screen') && !state.loadedImage) {
         alert('Please capture or select a test strip photo first.');
         return;
@@ -100,11 +117,111 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Export view switching globally for inline HTML buttons
   window.switchScreen = switchScreen;
 
   // ==========================================
-  // 3. Image Capture & Loading
+  // 3. Worker QR Code Generator & Badge Modal
+  // ==========================================
+  function generateWorkerQrBadge() {
+    const workerId = workerIdInput.value.trim() || 'WRK-UNKNOWN';
+    const shiftDate = shiftDateInput.value || new Date().toISOString().split('T')[0];
+    const timestamp = new Date().toLocaleTimeString();
+
+    badgeWorkerIdText.textContent = workerId;
+    badgeShiftDateText.textContent = shiftDate;
+    badgeTimestampText.textContent = timestamp;
+
+    const payload = JSON.stringify({
+      workerId,
+      shiftDate,
+      timestamp,
+      app: 'H2S_Dose_Reader'
+    });
+
+    qrcodeDisplay.innerHTML = '';
+    if (typeof QRCode !== 'undefined') {
+      new QRCode(qrcodeDisplay, {
+        text: payload,
+        width: 100,
+        height: 100,
+        colorDark: '#0F172A',
+        colorLight: '#FFFFFF',
+        correctLevel: QRCode.CorrectLevel.H
+      });
+    } else {
+      qrcodeDisplay.textContent = 'QR Engine Ready';
+    }
+
+    qrBadgeModal.style.display = 'flex';
+  }
+
+  openQrModalBtn.addEventListener('click', generateWorkerQrBadge);
+  headerQrBadgeBtn.addEventListener('click', generateWorkerQrBadge);
+  closeQrModalBtn.addEventListener('click', () => qrBadgeModal.style.display = 'none');
+
+  printBadgeBtn.addEventListener('click', () => {
+    window.print();
+  });
+
+  // ==========================================
+  // 4. Worker QR Scanner (Decoding QR from Camera/File)
+  // ==========================================
+  scanWorkerQrBtn.addEventListener('click', () => {
+    qrFileInput.click();
+  });
+
+  qrFileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = img.width;
+        tempCanvas.height = img.height;
+        const tCtx = tempCanvas.getContext('2d');
+        tCtx.drawImage(img, 0, 0);
+
+        const imgData = tCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        
+        if (typeof jsQR !== 'undefined') {
+          const code = jsQR(imgData.data, imgData.width, imgData.height);
+          if (code) {
+            try {
+              const data = JSON.parse(code.data);
+              if (data.workerId) {
+                workerIdInput.value = data.workerId;
+                if (data.shiftDate) shiftDateInput.value = data.shiftDate;
+                showQrScanSuccess(`Worker ${data.workerId} verified from QR Code!`);
+                return;
+              }
+            } catch (err) {
+              // Not JSON payload, use raw code string
+              workerIdInput.value = code.data;
+              showQrScanSuccess(`Worker ID ${code.data} scanned!`);
+              return;
+            }
+          }
+        }
+        alert('No valid QR code detected in image. Please try another clear photo.');
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  function showQrScanSuccess(msg) {
+    qrScanSuccessText.textContent = msg;
+    qrScanSuccessBanner.style.display = 'flex';
+    setTimeout(() => {
+      qrScanSuccessBanner.style.display = 'none';
+    }, 5000);
+  }
+
+  // ==========================================
+  // 5. Image Capture & Processing
   // ==========================================
   fileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -116,6 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
       img.onload = () => {
         loadImageToCanvas(img);
         switchScreen('calibrate-screen');
+        autoDetectPatches(); // Run auto-detection automatically!
       };
       img.onerror = () => {
         alert('Failed to load selected image. Please try another file.');
@@ -125,7 +243,6 @@ document.addEventListener('DOMContentLoaded', () => {
     reader.readAsDataURL(file);
   });
 
-  // Demo Sample Image Generator (Generates synthetic calibration card)
   demoSampleBtn.addEventListener('click', () => {
     generateDemoSamplePhoto();
     switchScreen('calibrate-screen');
@@ -133,7 +250,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function loadImageToCanvas(img) {
     state.loadedImage = img;
-    // Scale canvas resolution appropriately (max 1000px width/height to ensure crispness and speed)
     const maxDim = 1000;
     let w = img.width;
     let h = img.height;
@@ -169,9 +285,8 @@ document.addEventListener('DOMContentLoaded', () => {
     tCtx.fillRect(50, 50, 700, 500);
     tCtx.strokeRect(50, 50, 700, 500);
 
-    // Simulate warm tungsten ambient lighting tint (slightly yellowish: +20 R, +15 G, -10 B)
     // White Patch
-    tCtx.fillStyle = 'rgb(245, 240, 220)'; // Slight yellow tint from ambient light
+    tCtx.fillStyle = 'rgb(245, 240, 220)';
     tCtx.fillRect(100, 180, 160, 240);
     tCtx.strokeStyle = '#333';
     tCtx.lineWidth = 2;
@@ -182,32 +297,101 @@ document.addEventListener('DOMContentLoaded', () => {
     tCtx.textAlign = 'center';
     tCtx.fillText('WHITE REF', 180, 150);
 
-    // Grey Patch (18% grey under warm ambient light)
+    // Grey Patch
     tCtx.fillStyle = 'rgb(135, 130, 115)';
     tCtx.fillRect(320, 180, 160, 240);
     tCtx.strokeRect(320, 180, 160, 240);
-
     tCtx.fillText('GREY REF', 400, 150);
 
-    // Chemical Strip Patch (Simulating moderate reaction darkness ~ RGB 105, 80, 65)
+    // Chemical Strip Patch (Simulating moderate reaction darkness ~ RGB 115, 90, 70)
     tCtx.fillStyle = 'rgb(115, 90, 70)';
     tCtx.fillRect(540, 180, 160, 240);
     tCtx.strokeRect(540, 180, 160, 240);
-
     tCtx.fillText('H2S STRIP', 620, 150);
 
-    // Subtitle on card
     tCtx.font = '16px monospace';
     tCtx.fillStyle = '#64748B';
     tCtx.fillText('SIH DOSIMETER CALIBRATION CARD (SAMPLE)', 400, 500);
 
     const img = new Image();
-    img.onload = () => loadImageToCanvas(img);
+    img.onload = () => {
+      loadImageToCanvas(img);
+      autoDetectPatches();
+    };
     img.src = canvasTemp.toDataURL();
   }
 
   // ==========================================
-  // 4. Tap-Point Calibration Logic
+  // 6. Automatic Patch Detection Algorithm
+  // ==========================================
+  autoDetectBtn.addEventListener('click', autoDetectPatches);
+
+  function autoDetectPatches() {
+    if (!state.loadedImage) return;
+
+    const w = photoCanvas.width;
+    const h = photoCanvas.height;
+    const sampleGridX = 10;
+    const sampleGridY = 10;
+    const stepX = Math.floor(w / sampleGridX);
+    const stepY = Math.floor(h / sampleGridY);
+
+    let brightestPt = null, maxLum = -1;
+    let greyPt = null, minGreyDiff = 999;
+    let stripPt = null, maxDarknessRatio = -1;
+
+    for (let gx = 1; gx < sampleGridX - 1; gx++) {
+      for (let gy = 1; gy < sampleGridY - 1; gy++) {
+        const cx = gx * stepX;
+        const cy = gy * stepY;
+        const rgb = getAverageRGB(cx, cy, 5);
+
+        const lum = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+        const chromaticVar = Math.abs(rgb.r - rgb.g) + Math.abs(rgb.g - rgb.b) + Math.abs(rgb.b - rgb.r);
+
+        // White Ref Detection: Highest luminance (brightest region)
+        if (lum > maxLum && rgb.r > 180 && rgb.g > 180) {
+          maxLum = lum;
+          brightestPt = { x: cx, y: cy, rawRgb: rgb };
+        }
+
+        // Grey Ref Detection: Mid-luminance (100–160) with lowest chromatic variance (neutral grey)
+        if (lum >= 90 && lum <= 170 && chromaticVar < minGreyDiff) {
+          minGreyDiff = chromaticVar;
+          greyPt = { x: cx, y: cy, rawRgb: rgb };
+        }
+
+        // Chemical Strip Detection: High darkness ratio with reddish/brownish tint
+        const darkness = 255 - lum;
+        if (darkness > 80 && darkness < 220 && (rgb.r >= rgb.b)) {
+          const ratio = darkness + (rgb.r - rgb.b);
+          if (ratio > maxDarknessRatio) {
+            maxDarknessRatio = ratio;
+            stripPt = { x: cx, y: cy, rawRgb: rgb };
+          }
+        }
+      }
+    }
+
+    // Fallbacks if detection is fuzzy
+    if (!brightestPt) brightestPt = { x: Math.round(w * 0.22), y: Math.round(h * 0.5), rawRgb: getAverageRGB(Math.round(w * 0.22), Math.round(h * 0.5), 5) };
+    if (!greyPt) greyPt = { x: Math.round(w * 0.50), y: Math.round(h * 0.5), rawRgb: getAverageRGB(Math.round(w * 0.50), Math.round(h * 0.5), 5) };
+    if (!stripPt) stripPt = { x: Math.round(w * 0.78), y: Math.round(h * 0.5), rawRgb: getAverageRGB(Math.round(w * 0.78), Math.round(h * 0.5), 5) };
+
+    state.tapPoints = [brightestPt, greyPt, stripPt];
+    state.tapState = 3;
+    computeDoseBtn.disabled = false;
+
+    autoDetectBanner.style.display = 'block';
+    setTimeout(() => { autoDetectBanner.style.display = 'none'; }, 4000);
+
+    updateStepUI();
+    updateReadoutCards();
+    redrawCanvas();
+  }
+
+  // ==========================================
+  // 7. Tap-Point Manual Calibration Logic
   // ==========================================
   function resetPinState() {
     state.tapState = 0;
@@ -220,7 +404,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   resetPinsBtn.addEventListener('click', resetPinState);
 
-  // Handle click or touch on canvas
   photoCanvas.addEventListener('pointerdown', (e) => {
     if (!state.loadedImage || state.tapState >= 3) return;
 
@@ -231,7 +414,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const canvasX = Math.round((e.clientX - rect.left) * scaleX);
     const canvasY = Math.round((e.clientY - rect.top) * scaleY);
 
-    // Extract average RGB in a 10x10px box (radius 5)
     const rawRgb = getAverageRGB(canvasX, canvasY, 5);
 
     state.tapPoints[state.tapState] = { x: canvasX, y: canvasY, rawRgb };
@@ -316,10 +498,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function redrawCanvas() {
     if (!state.loadedImage) return;
 
-    // Redraw base image
     ctx.drawImage(state.loadedImage, 0, 0, photoCanvas.width, photoCanvas.height);
 
-    // Draw pin markers
     const pinColors = ['#2563EB', '#8B5CF6', '#EA580C'];
     const pinLabels = ['1: WHITE', '2: GREY', '3: STRIP'];
 
@@ -329,7 +509,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const { x, y } = pt;
       const color = pinColors[idx];
 
-      // Draw Outer Pulsing Ring
       ctx.beginPath();
       ctx.arc(x, y, 22, 0, Math.PI * 2);
       ctx.fillStyle = color;
@@ -337,7 +516,6 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.fill();
       ctx.globalAlpha = 1.0;
 
-      // Draw Solid Pin Circle
       ctx.beginPath();
       ctx.arc(x, y, 14, 0, Math.PI * 2);
       ctx.fillStyle = color;
@@ -346,14 +524,12 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.strokeStyle = '#FFFFFF';
       ctx.stroke();
 
-      // Pin Number
       ctx.fillStyle = '#FFFFFF';
       ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText((idx + 1).toString(), x, y);
 
-      // Label Tag below pin
       ctx.font = 'bold 11px sans-serif';
       const labelText = pinLabels[idx];
       const textWidth = ctx.measureText(labelText).width;
@@ -366,7 +542,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================
-  // 5. Core Color Correction & Dose Calculation Algorithm
+  // 8. Core Dose Calculation & Threshold Engine
   // ==========================================
   computeDoseBtn.addEventListener('click', () => {
     if (state.tapState < 3) return;
@@ -386,26 +562,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function computeDoseAlgorithm(whiteRef, greyRef, stripRaw) {
-    // Step 2: Per-channel scale factors (White balance normalization)
-    // Target true white = (255, 255, 255)
     const scaleR = whiteRef.r > 0 ? 255 / whiteRef.r : 1;
     const scaleG = whiteRef.g > 0 ? 255 / whiteRef.g : 1;
     const scaleB = whiteRef.b > 0 ? 255 / whiteRef.b : 1;
 
-    // Apply scaling to raw strip RGB
     const correctedR = Math.min(255, Math.max(0, Math.round(stripRaw.r * scaleR)));
     const correctedG = Math.min(255, Math.max(0, Math.round(stripRaw.g * scaleG)));
     const correctedB = Math.min(255, Math.max(0, Math.round(stripRaw.b * scaleB)));
 
-    // Step 3: Darkness Score from Perceptual Luminance
-    // Luminance formula: 0.299*R + 0.587*G + 0.114*B
     const luminance = 0.299 * correctedR + 0.587 * correctedG + 0.114 * correctedB;
     const darkness = Math.min(255, Math.max(0, 255 - luminance));
 
-    // Step 4: Linear Interpolation on Calibration Curve
     const dose = interpolateDose(darkness, calibrationCurve);
 
-    // Step 5: Status Thresholds
     let status = 'Normal';
     let statusClass = 'status-normal';
 
@@ -427,10 +596,12 @@ document.addEventListener('DOMContentLoaded', () => {
       correctedStrip: { r: correctedR, g: correctedG, b: correctedB },
       luminance: luminance.toFixed(1),
       darkness: darkness.toFixed(1),
+      darknessNum: darkness,
       dose: dose.toFixed(1),
       doseNum: dose,
       status,
       statusClass,
+      calibrationCurveSnapshot: [...calibrationCurve],
       scannedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     };
   }
@@ -455,16 +626,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================
-  // 6. Display Result Screen & Expiry Patch Override
+  // 9. Display Result & Calibration Curve Chart Visualizer
   // ==========================================
   function displayResult(res) {
     resultDoseVal.textContent = res.dose;
 
-    // Status Badge
     resultStatusBadge.textContent = res.status;
     resultStatusBadge.className = `status-badge ${res.statusClass}`;
 
-    // Color Swatches
     const rawRgbStr = `rgb(${res.stripRaw.r}, ${res.stripRaw.g}, ${res.stripRaw.b})`;
     const corrRgbStr = `rgb(${res.correctedStrip.r}, ${res.correctedStrip.g}, ${res.correctedStrip.b})`;
 
@@ -483,9 +652,53 @@ document.addEventListener('DOMContentLoaded', () => {
       <div><strong>Worker ID:</strong> ${res.workerId} | <strong>Date:</strong> ${res.shiftDate}</div>
     `;
 
-    // Handle Expiry Patch Toggle State
+    // Render Calibration Curve Trace SVG Chart
+    renderCalibrationChart(resultCurveChartContainer, res.darknessNum, res.doseNum);
+
     state.expiryValid = expiryToggle.checked;
     updateExpiryUI();
+  }
+
+  function renderCalibrationChart(container, activeDarkness, activeDose) {
+    container.innerHTML = '';
+    const svgWidth = 500;
+    const svgHeight = 160;
+    const pad = 30;
+
+    const maxD = 80; // Max dose Y-axis
+    const maxK = 255; // Max darkness X-axis
+
+    // Map points to SVG canvas coordinates
+    const pointsSvg = calibrationCurve.map(pt => {
+      const x = pad + (pt.darkness / maxK) * (svgWidth - pad * 2);
+      const y = (svgHeight - pad) - (pt.dose / maxD) * (svgHeight - pad * 2);
+      return `${x},${y}`;
+    }).join(' ');
+
+    const activeX = pad + (activeDarkness / maxK) * (svgWidth - pad * 2);
+    const activeY = (svgHeight - pad) - (activeDose / maxD) * (svgHeight - pad * 2);
+
+    const svgHtml = `
+      <svg class="curve-chart-svg" viewBox="0 0 ${svgWidth} ${svgHeight}">
+        <!-- Axes -->
+        <line x1="${pad}" y1="${svgHeight - pad}" x2="${svgWidth - 10}" y2="${svgHeight - pad}" stroke="#CBD5E1" stroke-width="2"/>
+        <line x1="${pad}" y1="10" x2="${pad}" y2="${svgHeight - pad}" stroke="#CBD5E1" stroke-width="2"/>
+        
+        <!-- Axis Labels -->
+        <text x="${svgWidth / 2}" y="${svgHeight - 5}" font-size="10" fill="#64748B" font-weight="700" text-anchor="middle">Darkness Index Score (0 - 255)</text>
+        <text x="10" y="${svgHeight / 2}" font-size="10" fill="#64748B" font-weight="700" text-anchor="middle" transform="rotate(-90 10 ${svgHeight / 2})">Dose (ppm·hr)</text>
+
+        <!-- Curve Line -->
+        <polyline points="${pointsSvg}" fill="none" stroke="#2563EB" stroke-width="3" stroke-linecap="round"/>
+
+        <!-- Active Reading Point -->
+        <circle cx="${activeX}" cy="${activeY}" r="8" fill="#FFC72C" stroke="#0F172A" stroke-width="3"/>
+        <circle cx="${activeX}" cy="${activeY}" r="12" fill="#FFC72C" opacity="0.3"/>
+        <text x="${activeX + 10}" y="${activeY - 5}" font-size="11" font-weight="800" fill="#0F172A">${activeDose.toFixed(1)} ppm·hr</text>
+      </svg>
+    `;
+
+    container.innerHTML = svgHtml;
   }
 
   expiryToggle.addEventListener('change', () => {
@@ -505,7 +718,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Technical Breakdown Accordion Toggle
   techDetailsToggle.addEventListener('click', () => {
     if (techDetailsBox.style.display === 'none' || !techDetailsBox.style.display) {
       techDetailsBox.style.display = 'flex';
@@ -526,13 +738,15 @@ document.addEventListener('DOMContentLoaded', () => {
       shiftDate: state.latestResult.shiftDate,
       dose: state.latestResult.dose,
       doseNum: state.latestResult.doseNum,
+      darknessIndex: state.latestResult.darkness,
       status: state.latestResult.status,
       statusClass: state.latestResult.statusClass,
       badgeValid: state.expiryValid ? 'Yes' : 'No (Expired)',
+      calibrationCurve: state.latestResult.calibrationCurveSnapshot,
       scannedAt: new Date().toLocaleString()
     };
 
-    state.logs.unshift(logEntry); // Most recent first
+    state.logs.unshift(logEntry);
     localStorage.setItem('h2s_dosimeter_logs', JSON.stringify(state.logs));
 
     alert(`Reading for Worker ${logEntry.workerId} saved to Compliance Log.`);
@@ -540,13 +754,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==========================================
-  // 7. Dashboard & Log Operations
+  // 10. Dashboard & Log Operations
   // ==========================================
   function renderDashboard() {
     const query = (logSearchInput.value || '').toLowerCase().trim();
     const filteredLogs = state.logs.filter(log => log.workerId.toLowerCase().includes(query));
 
-    // Update Statistics
     statTotal.textContent = state.logs.length;
     statNormal.textContent = state.logs.filter(l => l.status.includes('Normal')).length;
     statElevatedHigh.textContent = state.logs.filter(l => !l.status.includes('Normal')).length;
@@ -582,7 +795,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   logSearchInput.addEventListener('input', renderDashboard);
 
-  // CSV Export Download
   exportCsvBtn.addEventListener('click', () => {
     if (state.logs.length === 0) {
       alert('No log data available to export.');
@@ -617,7 +829,6 @@ document.addEventListener('DOMContentLoaded', () => {
     URL.revokeObjectURL(url);
   });
 
-  // Clear All Logs
   clearLogBtn.addEventListener('click', () => {
     if (state.logs.length === 0) return;
 
@@ -628,7 +839,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Helper XSS Escape
   function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, (m) => {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];

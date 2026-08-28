@@ -105,7 +105,7 @@ body {
 }
 
 .brand-title h1 {
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   display: flex;
@@ -128,6 +128,40 @@ body {
   color: var(--color-slate-muted);
   margin-top: 2px;
   font-weight: 500;
+}
+
+.btn-qr-icon {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--color-hazard-yellow);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.btn-qr-icon:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #FFFFFF;
+}
+
+.btn-sm-qr {
+  background-color: var(--color-hazard-yellow);
+  color: var(--color-industrial-dark);
+  border: none;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* Top Navigation / Tab Bar */
@@ -294,6 +328,31 @@ select:focus {
   margin-top: 4px;
 }
 
+/* Banners & Notifications */
+.qr-alert-banner {
+  background-color: #D1FAE5;
+  color: #047857;
+  border: 1.5px solid #10B981;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auto-detect-banner {
+  background-color: #EEF2FF;
+  color: #4338CA;
+  border: 1.5px solid #6366F1;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 700;
+  animation: fadeIn 0.3s ease;
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -307,7 +366,7 @@ select:focus {
   border: none;
   cursor: pointer;
   transition: all 0.15s ease;
-  min-height: 48px; /* Mobile touch accessibility */
+  min-height: 48px;
   text-decoration: none;
 }
 
@@ -348,15 +407,6 @@ select:focus {
   border-color: var(--color-slate-muted);
 }
 
-.btn-danger {
-  background-color: var(--color-status-red);
-  color: #FFFFFF;
-}
-
-.btn-danger:hover {
-  background-color: #DC2626;
-}
-
 .file-input-wrapper {
   position: relative;
   width: 100%;
@@ -383,7 +433,7 @@ select:focus {
   justify-content: center;
   align-items: center;
   box-shadow: var(--shadow-md);
-  touch-action: none; /* Prevents scrolling while tapping points */
+  touch-action: none;
 }
 
 #photoCanvas {
@@ -577,7 +627,7 @@ select:focus {
   box-shadow: inset 0 0 2px rgba(0,0,0,0.2);
 }
 
-/* Warning & Expiry Banner */
+/* Expiry Toggle & Warning Banner */
 .expiry-toggle-card {
   display: flex;
   align-items: center;
@@ -623,6 +673,25 @@ select:focus {
   text-align: center;
   font-style: italic;
   padding: 0 8px;
+}
+
+/* Calibration Curve Chart Visualizer */
+.curve-chart-wrapper {
+  width: 100%;
+  height: 180px;
+  background: #F8FAFC;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.curve-chart-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
 }
 
 /* Math Technical Accordion / Details */
@@ -729,6 +798,62 @@ select:focus {
   font-size: 0.875rem;
 }
 
+/* Worker QR Printable Badge Card */
+.printable-badge-card {
+  background: #0F172A;
+  color: #FFFFFF;
+  border: 2px solid var(--color-hazard-yellow);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: var(--shadow-md);
+}
+
+.badge-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  padding-bottom: 8px;
+}
+
+.badge-body {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.qr-code-box {
+  background: #FFFFFF;
+  padding: 8px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 110px;
+  min-height: 110px;
+}
+
+.badge-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.badge-worker-id {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: var(--color-hazard-yellow);
+  letter-spacing: 0.02em;
+}
+
+.badge-field {
+  font-size: 0.78rem;
+  color: #CBD5E1;
+}
+
 /* Footer Disclaimer */
 .app-footer {
   text-align: center;
@@ -759,11 +884,27 @@ select:focus {
 .modal-content {
   background: #FFFFFF;
   border-radius: var(--radius-md);
-  max-width: 400px;
+  max-width: 440px;
   width: 100%;
   padding: 20px;
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+}
+
+/* Print Media Query */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-badge-container, .print-badge-container * {
+    visibility: visible;
+  }
+  .print-badge-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
 }
